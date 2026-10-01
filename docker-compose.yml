@@ -1,0 +1,188 @@
+services:
+  mysql:
+    image: mysql:8.0
+    ports:
+      - "127.0.0.1:3307:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is required}
+      MYSQL_DATABASE: media_db
+      MYSQL_USER: ${MYSQL_APP_USER:-dovideo}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      TZ: Asia/Shanghai
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - ./mysql/data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 20s
+
+  redis:
+    image: redis:7.4-alpine
+    ports:
+      - "127.0.0.1:6379:6379"
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+    command: ["sh", "-c", "exec redis-server --appendonly yes --requirepass \"$$REDIS_PASSWORD\""]
+    volumes:
+      - ./redis/data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  qdrant:
+    image: qdrant/qdrant:v1.18.2
+    ports:
+      - "127.0.0.1:6333:6333"
+    environment:
+      QDRANT__SERVICE__API_KEY: ${QDRANT_API_KEY:?QDRANT_API_KEY is required}
+    volumes:
+      - ./qdrant/data:/qdrant/storage
+
+  minio:
+    build:
+      context: ./docker/minio
+    image: dovideo-minio:RELEASE.2025-10-15T17-29-55Z
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:?MINIO_ACCESS_KEY is required}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:?MINIO_SECRET_KEY is required}
+    command: server /data --console-address ":9001"
+    volumes:
+      - ./minio/data:/data
+
+  rmqnamesrv:
+    image: apache/rocketmq:5.3.4
+    ports:
+      - "127.0.0.1:9876:9876"
+    environment:
+      JAVA_OPT_EXT: -server -Xms256m -Xmx256m -Xmn128m
+    command: sh mqnamesrv
+
+  rmq-volume-init:
+    image: apache/rocketmq:5.3.4
+    user: "0:0"
+    entrypoint: ["sh", "-c", "mkdir -p /home/rocketmq/logs/rocketmqlogs /home/rocketmq/store && chown -R rocketmq:rocketmq /home/rocketmq/logs /home/rocketmq/store"]
+    volumes:
+      - rocketmq-store:/home/rocketmq/store
+      - rocketmq-logs:/home/rocketmq/logs
+
+  rmqbroker:
+    image: apache/rocketmq:5.3.4
+    ports:
+      - "127.0.0.1:10911:10911"
+      - "127.0.0.1:10909:10909"
+      - "127.0.0.1:8081:8081"
+    environment:
+      NAMESRV_ADDR: rmqnamesrv:9876
+      BROKER_ID: 0
+      BROKER_ROLE: ASYNC_MASTER
+      JAVA_OPT_EXT: -server -Xms256m -Xmx256m -Xmn128m
+    volumes:
+      - ./rocketmq/broker.conf:/home/rocketmq/broker.conf:ro
+      - rocketmq-store:/home/rocketmq/store
+      - rocketmq-logs:/home/rocketmq/logs
+    # The upstream broker.conf advertises 127.0.0.1. NameServer and clients in
+    # other Compose containers must receive this container's reachable address.
+    command:
+      - sh
+      - -c
+      - |
+        broker_ip=$$(hostname -i)
+        sed "s/^brokerIP1[[:space:]]*=.*/brokerIP1 = $$broker_ip/" /home/rocketmq/broker.conf > /tmp/broker.conf
+        exec sh mqbroker --enable-proxy -n rmqnamesrv:9876 -c /tmp/broker.conf
+    depends_on:
+      rmqnamesrv:
+        condition: service_started
+      rmq-volume-init:
+        condition: service_completed_successfully
+
+  python-api:
+    build:
+      context: ./backend
+    image: framed-read-backend:public
+    ports:
+      - "127.0.0.1:9090:9090"
+    environment: &python-environment
+      SERVER_ADDRESS: 0.0.0.0
+      SERVER_PORT: 9090
+      DB_USERNAME: ${DB_USERNAME:-dovideo}
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: media_db
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_PUBLIC_ENDPOINT: ${MINIO_PUBLIC_ENDPOINT:-http://localhost:9000}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?MINIO_ACCESS_KEY is required}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?MINIO_SECRET_KEY is required}
+      MINIO_BUCKET: ${MINIO_BUCKET:-media}
+      QDRANT_ENABLED: ${QDRANT_ENABLED:-true}
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_API_KEY: ${QDRANT_API_KEY:?QDRANT_API_KEY is required}
+      QDRANT_COLLECTION: ${QDRANT_COLLECTION:-video_chunks}
+      ROCKETMQ_ENDPOINTS: rmqbroker:8081
+      ROCKETMQ_ANALYSIS_TOPIC: ${ROCKETMQ_ANALYSIS_TOPIC:-video-analysis-topic}
+      ROCKETMQ_ANALYSIS_DEAD_TOPIC: ${ROCKETMQ_ANALYSIS_DEAD_TOPIC:-video-analysis-dead-topic}
+      ROCKETMQ_ANALYSIS_GROUP: ${ROCKETMQ_ANALYSIS_GROUP:-video-analysis-consumer}
+      SILICONFLOW_API_KEY: ${SILICONFLOW_API_KEY:-}
+      SILICONFLOW_BASE_URL: ${SILICONFLOW_BASE_URL:-https://api.siliconflow.cn/v1}
+      LLM_MODEL: ${LLM_MODEL:-deepseek-ai/DeepSeek-V3.2}
+      LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-300}
+      LLM_INPUT_PRICE_PER_MILLION: ${LLM_INPUT_PRICE_PER_MILLION:-0}
+      LLM_OUTPUT_PRICE_PER_MILLION: ${LLM_OUTPUT_PRICE_PER_MILLION:-0}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-BAAI/bge-m3}
+      ASR_MODEL: ${ASR_MODEL:-TeleAI/TeleSpeechASR}
+      ASR_URL: ${ASR_URL:-https://api.siliconflow.cn/v1/audio/transcriptions}
+      AGENT_MAX_ROUNDS: ${AGENT_MAX_ROUNDS:-2}
+      AGENT_MAX_DURATION_MS: ${AGENT_MAX_DURATION_MS:-120000}
+      AGENT_MAX_ESTIMATED_TOKENS: ${AGENT_MAX_ESTIMATED_TOKENS:-50000}
+      AGENT_MAX_ESTIMATED_COST: ${AGENT_MAX_ESTIMATED_COST:-0}
+      AGENT_EVALUATION_ENABLED: ${AGENT_EVALUATION_ENABLED:-false}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
+      FFMPEG_DIR: /usr/bin
+      OCR_COMMAND: tesseract
+      YTDLP_PATH: yt-dlp
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_started
+      qdrant:
+        condition: service_started
+      rmqbroker:
+        condition: service_started
+
+  python-worker:
+    profiles: ["worker"]
+    image: framed-read-backend:public
+    build:
+      context: ./backend
+    command: ["python", "-m", "app.worker"]
+    environment: *python-environment
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_started
+      qdrant:
+        condition: service_started
+      rmqbroker:
+        condition: service_started
+
+
+volumes:
+  rocketmq-store:
+  rocketmq-logs:

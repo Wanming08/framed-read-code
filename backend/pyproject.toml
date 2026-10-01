@@ -1,0 +1,21 @@
+[project]
+name = "framed-read-backend"
+version = "0.1.0"
+description = "Python migration of the DOVideo-AI backend"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "alembic>=1.13,<2",
+    "fastapi>=0.115,<1",
+    "httpx>=0.27,<1",
+    "minio>=7,<8",
+    "pillow>=11,<13",
+    "pydantic-settings>=2,<3",
+    "pymysql>=1,<2",
+    "python-multipart>=0.0.12,<1",
+    "qdrant-client>=1.12,<2",
+    "redis>=5,<8",
+    "rocketmq-python-client==5.1.2",
+    "sqlalchemy>=2,<3",
+    "uvicorn[standard]>=0.30,<1",
+    "yt-dlp>=2025.1,<2027",
+]
