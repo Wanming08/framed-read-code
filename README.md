@@ -227,6 +227,6 @@ LICENSE               MIT 许可证
 
 ## 来源与许可
 
-基于 [Xiaoc7r/DOVideo-AI](https://github.com/Xiaoc7r/DOVideo-AI) 的固定版本 [`df23f36226495f9cd4e7f740ea8a3b8cac51fbf2`](https://github.com/Xiaoc7r/DOVideo-AI/tree/df23f36226495f9cd4e7f740ea8a3b8cac51fbf2) 移植业务流程，复用并改编 Vue 前端、算法、提示词、数据库 SQL 和基础设施设计。Python API、worker 与运行适配为本项目的迁移实现；Java 参考代码从固定上游查阅。
+帧读由 [Wanming08](https://github.com/Wanming08) 开发维护，采用 [MIT License](LICENSE)。Python 后端、任务 worker、运行适配及前端界面与交互改造为本项目的开发成果，新增和改编贡献署名 `Wanming08`。
 
-[MIT License](LICENSE)，保留 `Copyright (c) 2026 Majst`。
+业务迁移以 [Xiaoc7r/DOVideo-AI 的固定版本](https://github.com/Xiaoc7r/DOVideo-AI/tree/df23f36226495f9cd4e7f740ea8a3b8cac51fbf2) 为参考。沿用或改编的上游前端代码、提示词与数据库 SQL 保留原 MIT 许可及 `Copyright (c) 2026 Majst`；本项目贡献补充 `Copyright (c) 2026 Wanming08`。
