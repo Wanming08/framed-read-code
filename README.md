@@ -322,4 +322,4 @@ LICENSE               MIT 许可证
 
 帧读由 [Wanming08](https://github.com/Wanming08) 开发维护，采用 [MIT License](LICENSE)。Python 后端、任务 worker、运行适配及前端界面与交互改造为本项目的开发成果，新增和改编贡献署名 `Wanming08`。
 
-业务迁移以 [Xiaoc7r/DOVideo-AI 的固定版本](https://github.com/Xiaoc7r/DOVideo-AI/tree/df23f36226495f9cd4e7f740ea8a3b8cac51fbf2) 为参考。沿用或改编的上游前端代码、提示词与数据库 SQL 保留原 MIT 许可及 `Copyright (c) 2026 Majst`；本项目贡献补充 `Copyright (c) 2026 Wanming08`。
+本项目贡献 `Copyright (c) 2026 Wanming08`。
